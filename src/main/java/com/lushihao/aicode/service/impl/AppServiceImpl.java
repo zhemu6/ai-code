@@ -7,14 +7,18 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.lushihao.aicode.constant.AppConstant;
 import com.lushihao.aicode.core.AiCodeGeneratorFacade;
+import com.lushihao.aicode.core.parser.CodeParserExecutor;
+import com.lushihao.aicode.core.saver.CodeFileSaverExecutor;
 import com.lushihao.aicode.exception.BusinessException;
 import com.lushihao.aicode.exception.ErrorCode;
 import com.lushihao.aicode.exception.ThrowUtils;
 import com.lushihao.aicode.model.dto.app.AppQueryRequest;
 import com.lushihao.aicode.model.entity.User;
+import com.lushihao.aicode.model.enums.ChatHistoryMessageTypeEnum;
 import com.lushihao.aicode.model.enums.CodeGenTypeEnum;
 import com.lushihao.aicode.model.vo.AppVO;
 import com.lushihao.aicode.model.vo.UserVO;
+import com.lushihao.aicode.service.ChatHistoryService;
 import com.lushihao.aicode.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
@@ -26,6 +30,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,6 +50,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private UserService userService;
     @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
+    @Resource
+    private ChatHistoryService chatHistoryService;
 
     /**
      * 通过聊天生成代码
@@ -69,7 +76,30 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenTypeStr);
         ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.PARAMS_ERROR, "代码生成类型错误");
         // 5. 调用文件生成器
-        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        // 调入ai之前 将用户的消息添加到数据库中
+        chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
+        // 6. 获取ai返回的结果
+        Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        // 7. 收集ai响应的内容
+        StringBuilder aiResponseBuilder = new StringBuilder();
+        return contentFlux.map(
+                chunk -> {
+                    aiResponseBuilder.append(chunk);
+                    return chunk;
+                }
+        ).doOnComplete(() -> {
+                    // 流式返回完成后 保存消息到历史对话中
+                    String aiResponse = aiResponseBuilder.toString();
+                    chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
+                }
+        ).doOnError(error -> {
+            // 流式返回完成后 保存消息到历史对话中
+            String errorMessage = "AI 回复失败，" + error.getMessage();
+            chatHistoryService.addChatMessage(appId, errorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
+
+        });
+
+
     }
 
 
@@ -124,7 +154,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 9. 返回可访问的 URL
         return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
     }
-
 
 
     /**
@@ -213,5 +242,29 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 .orderBy(sortField, "ascend".equals(sortOrder));
     }
 
+    /**
+     * 删除应用时也需要删除相应的对话id
+     *
+     * @param id appId
+     * @return 是否删除成功
+     */
+    @Override
+    public boolean removeById(Serializable id) {
+        if (id == null) {
+            return false;
+        }
+        long appId = Long.parseLong(id.toString());
+        if (appId <= 0) {
+            return false;
+        }
+        try{
+            // 删除对话历史
+            chatHistoryService.deleteByAppId(appId);
+        }catch (Exception e){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "删除应用失败：" + e.getMessage());
+        }
+        // 删除应用
+        return super.removeById(id);
+    }
 
 }
