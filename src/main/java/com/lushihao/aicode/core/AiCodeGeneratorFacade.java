@@ -1,6 +1,7 @@
 package com.lushihao.aicode.core;
 
 import com.lushihao.aicode.ai.AiCodeGeneratorService;
+import com.lushihao.aicode.ai.AiCodeGeneratorServiceFactory;
 import com.lushihao.aicode.ai.model.HtmlCodeResult;
 import com.lushihao.aicode.ai.model.MultiFileCodeResult;
 import com.lushihao.aicode.core.parser.CodeParserExecutor;
@@ -29,7 +30,7 @@ import java.io.File;
 public class AiCodeGeneratorFacade {
 
     @Resource
-    private AiCodeGeneratorService aiCodeGeneratorService;
+    private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
     /**
      * 非流式 统一入口：根据类型生成并保存代码
@@ -41,6 +42,8 @@ public class AiCodeGeneratorFacade {
      */
     public File generateAndSaveCode(String userMessage, CodeGenTypeEnum codeGenType,Long appId) {
         ThrowUtils.throwIf(codeGenType == null, ErrorCode.SYSTEM_ERROR, "生成类型不能为空");
+        // 根据appid 获取相应的Ai服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
         return switch (codeGenType) {
             case HTML -> {
                 // 获取HtmlCodeResult
@@ -70,6 +73,8 @@ public class AiCodeGeneratorFacade {
      */
     public Flux<String> generateAndSaveCodeStream(String userMessage, CodeGenTypeEnum codeGenType,Long appId) {
         ThrowUtils.throwIf(codeGenType == null, ErrorCode.SYSTEM_ERROR, "生成类型不能为空");
+        // 根据appid 获取相应的Ai服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
         return switch (codeGenType) {
             case HTML -> {
                 Flux<String> resultStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
