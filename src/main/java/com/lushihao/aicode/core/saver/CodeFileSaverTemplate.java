@@ -3,6 +3,7 @@ package com.lushihao.aicode.core.saver;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
+import com.lushihao.aicode.constant.AppConstant;
 import com.lushihao.aicode.exception.ErrorCode;
 import com.lushihao.aicode.exception.ThrowUtils;
 import com.lushihao.aicode.model.enums.CodeGenTypeEnum;
@@ -21,18 +22,19 @@ public abstract class CodeFileSaverTemplate<T>  {
     /**
      * 文件保存的根目录
      */
-    protected  static final String FILE_SAVE_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_output";
+    protected  static final String FILE_SAVE_ROOT_DIR = AppConstant.CODE_OUTPUT_ROOT_DIR;
 
     /**
      * 模板方法 保存代码的具体实现
      * @param result HtmlCodeResult 或者是 MultiFileCodeResult
+     * @param appId 应用ID
      * @return
      */
-    public final File saveCode(T result){
+    public final File saveCode(T result,Long appId){
         // 1. 验证输入
         validateInput(result);
         // 2. 构建唯一目录
-        String baseDirPath = buildUniqueDir();
+        String baseDirPath = buildUniqueDir(appId);
         // 3. 保存文件
         saveFiles(result, baseDirPath);
         // 4. 返回文件目录对象
@@ -46,13 +48,15 @@ public abstract class CodeFileSaverTemplate<T>  {
 
     /**
      * 构建唯一目录路径：tmp/code_output/bizType_雪花ID
+     * @param appId 应用ID
      * @return 唯一路径
      */
-    protected   String buildUniqueDir( ) {
+    protected   String buildUniqueDir(Long appId) {
+        ThrowUtils.throwIf(appId==null, ErrorCode.SYSTEM_ERROR, "应用ID为空");
         // 获取代码生成类型
-        CodeGenTypeEnum codeType = getCodeType();
+        String codeType = getCodeType().getValue();
         // 构建唯一目录 其中为生成 类型_雪花算法生成序号
-        String uniqueDirName = StrUtil.format("{}_{}", codeType, IdUtil.getSnowflakeNextIdStr());
+        String uniqueDirName = StrUtil.format("{}_{}", codeType, appId);
         String dirPath = FILE_SAVE_ROOT_DIR + File.separator + uniqueDirName;
         FileUtil.mkdir(dirPath);
         return dirPath;
@@ -65,9 +69,10 @@ public abstract class CodeFileSaverTemplate<T>  {
      * @param content 内容
      */
     protected  final void writeToFile(String dirPath,String fileName,String content){
-        ThrowUtils.throwIf(StrUtil.isBlank(content), ErrorCode.SYSTEM_ERROR, "文件内容为空");
-        String filePath  = dirPath + File.separator+fileName;
-        FileUtil.writeString(content, filePath, StandardCharsets.UTF_8);
+        if (StrUtil.isNotBlank(content)) {
+            String filePath = dirPath + File.separator + fileName;
+            FileUtil.writeString(content, filePath, StandardCharsets.UTF_8);
+        }
     }
 
 
