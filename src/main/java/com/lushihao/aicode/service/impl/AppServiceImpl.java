@@ -9,8 +9,6 @@ import com.lushihao.aicode.constant.AppConstant;
 import com.lushihao.aicode.core.AiCodeGeneratorFacade;
 import com.lushihao.aicode.core.builder.VueProjectBuilder;
 import com.lushihao.aicode.core.hanlder.StreamHandlerExecutor;
-import com.lushihao.aicode.core.parser.CodeParserExecutor;
-import com.lushihao.aicode.core.saver.CodeFileSaverExecutor;
 import com.lushihao.aicode.exception.BusinessException;
 import com.lushihao.aicode.exception.ErrorCode;
 import com.lushihao.aicode.exception.ThrowUtils;
@@ -21,6 +19,7 @@ import com.lushihao.aicode.model.enums.CodeGenTypeEnum;
 import com.lushihao.aicode.model.vo.AppVO;
 import com.lushihao.aicode.model.vo.UserVO;
 import com.lushihao.aicode.service.ChatHistoryService;
+import com.lushihao.aicode.service.ScreenshotService;
 import com.lushihao.aicode.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
@@ -29,6 +28,7 @@ import com.lushihao.aicode.mapper.AppMapper;
 import com.lushihao.aicode.service.AppService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -60,6 +60,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private StreamHandlerExecutor streamHandlerExecutor;
     @Resource
     private VueProjectBuilder vueProjectBuilder;
+    @Resource
+    private ScreenshotService screenshotService;
 
 
     /**
@@ -156,9 +158,29 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
         // 9. 返回可访问的 URL
-        return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+        String deployUrl = String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+        generateAppScreenshotAsync(appId, deployUrl);
+        return deployUrl;
     }
 
+    /**
+     * 异步执行截图操作
+     * @param appId
+     * @param webUrl
+     */
+    @Override
+    public void generateAppScreenshotAsync(long appId, String webUrl){
+        Thread.startVirtualThread(()->{
+            // 调用截图服务进行截图并上传COS
+            String screenshotUrl = screenshotService.generateAndUploadScreenshot(webUrl);
+            // 更新数据库中应用
+            App app = new App();
+            app.setId(appId);
+            app.setCover(screenshotUrl);
+            boolean updated = this.updateById(app);
+            ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用截图失败");
+        });
+    }
 
     /**
      * 给定一个APP类型转换成VO类型 并且关联查询UserVO类型

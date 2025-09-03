@@ -17,6 +17,8 @@ import java.util.List;
  */
 public interface AppService extends IService<App> {
 
+    void generateAppScreenshotAsync(long appId, String webUrl);
+
     AppVO getAppVO(App app);
 
     List<AppVO> getAppVOList(List<App> appList);
