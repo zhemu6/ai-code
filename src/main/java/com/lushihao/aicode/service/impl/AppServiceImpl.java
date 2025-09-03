@@ -7,6 +7,8 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.lushihao.aicode.constant.AppConstant;
 import com.lushihao.aicode.core.AiCodeGeneratorFacade;
+import com.lushihao.aicode.core.builder.VueProjectBuilder;
+import com.lushihao.aicode.core.hanlder.StreamHandlerExecutor;
 import com.lushihao.aicode.core.parser.CodeParserExecutor;
 import com.lushihao.aicode.core.saver.CodeFileSaverExecutor;
 import com.lushihao.aicode.exception.BusinessException;
@@ -26,6 +28,7 @@ import com.lushihao.aicode.model.entity.App;
 import com.lushihao.aicode.mapper.AppMapper;
 import com.lushihao.aicode.service.AppService;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -43,6 +46,7 @@ import java.util.stream.Collectors;
  *
  * @author <a href="https://github.com/zhemu6">ShihaoLu</a>
  */
+@Slf4j
 @Service
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
@@ -52,6 +56,11 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
     @Resource
     private ChatHistoryService chatHistoryService;
+    @Resource
+    private StreamHandlerExecutor streamHandlerExecutor;
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
+
 
     /**
      * 通过聊天生成代码
@@ -78,28 +87,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 5. 调用文件生成器
         // 调入ai之前 将用户的消息添加到数据库中
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
-        // 6. 获取ai返回的结果
-        Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-        // 7. 收集ai响应的内容
-        StringBuilder aiResponseBuilder = new StringBuilder();
-        return contentFlux.map(
-                chunk -> {
-                    aiResponseBuilder.append(chunk);
-                    return chunk;
-                }
-        ).doOnComplete(() -> {
-                    // 流式返回完成后 保存消息到历史对话中
-                    String aiResponse = aiResponseBuilder.toString();
-                    chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
-                }
-        ).doOnError(error -> {
-            // 流式返回完成后 保存消息到历史对话中
-            String errorMessage = "AI 回复失败，" + error.getMessage();
-            chatHistoryService.addChatMessage(appId, errorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
-
-        });
-
-
+        // 6. 获取ai返回的结果 这里返回的两种 一种是原生的文本流 一中是vue的json格式的
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        // 7. 收集ai响应的内容 并且在完成后保存记录到历史对话中
+        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
     }
 
 
@@ -136,6 +127,19 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         File sourceDir = new File(sourceDirPath);
         if (!sourceDir.exists() || !sourceDir.isDirectory()) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
+        }
+        // 对于Vue项目 我们需要利用vueProjectBuilder进行特殊处理
+        // 获取代码类型
+        CodeGenTypeEnum enumByValue = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        if(enumByValue==CodeGenTypeEnum.VUE_PROJECT){
+            boolean buildSuccess = vueProjectBuilder.buildProject(sourceDirPath);
+            ThrowUtils.throwIf(!buildSuccess, ErrorCode.SYSTEM_ERROR, "Vue项目构建失败");
+            // 检查dist目录是否存在
+            File distDir = new File(sourceDirPath ,"dist");
+            ThrowUtils.throwIf(!distDir.exists() || !distDir.isDirectory(), ErrorCode.SYSTEM_ERROR, "Vue项目构建成功但为生成dist目录");
+            // 将dist作为部署源
+            sourceDir = distDir;
+            log.info("Vue项目构建成功，将部署dist目录{}",sourceDir);
         }
         // 7. 复制文件到部署目录
         String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
