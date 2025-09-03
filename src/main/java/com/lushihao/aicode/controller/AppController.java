@@ -1,8 +1,11 @@
 package com.lushihao.aicode.controller;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.lushihao.aicode.ai.AiCodeGenTypeRoutingService;
+import com.lushihao.aicode.ai.tools.AiCodeGenTypeRoutingServiceFactory;
 import com.lushihao.aicode.annotation.AuthCheck;
 import com.lushihao.aicode.common.BaseResponse;
 import com.lushihao.aicode.common.DeleteRequest;
@@ -16,11 +19,13 @@ import com.lushihao.aicode.model.dto.app.*;
 import com.lushihao.aicode.model.entity.User;
 import com.lushihao.aicode.model.enums.CodeGenTypeEnum;
 import com.lushihao.aicode.model.vo.AppVO;
+import com.lushihao.aicode.service.ProjectDownloadService;
 import com.lushihao.aicode.service.UserService;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
@@ -30,6 +35,7 @@ import com.lushihao.aicode.service.AppService;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.io.File;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +53,10 @@ public class AppController {
     private AppService appService;
     @Resource
     private UserService userService;
-
+    @Resource
+    private ProjectDownloadService projectDownloadService;
+    @Resource
+    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
     /**
      * 创建应用
      *
@@ -58,24 +67,8 @@ public class AppController {
     @PostMapping("/add")
     public BaseResponse<Long> addApp(@RequestBody AppAddRequest appAddRequest, HttpServletRequest request) {
         ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
-        // 参数校验
-        String initPrompt = appAddRequest.getInitPrompt();
-        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化 prompt 不能为空");
-        // 获取当前登录用户
         User loginUser = userService.getLoginUser(request);
-        // 构造入库对象
-        App app = new App();
-        BeanUtil.copyProperties(appAddRequest, app);
-        app.setUserId(loginUser.getId());
-        // 应用名称暂时为 initPrompt 前 12 位
-        app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
-        // 暂时设置为多文件生成
-        //app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
-        app.setCodeGenType(CodeGenTypeEnum.VUE_PROJECT.getValue());
-        // 插入数据库
-        boolean result = appService.save(app);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
-        return ResultUtils.success(app.getId());
+        return ResultUtils.success( appService.addApp(appAddRequest, loginUser));
     }
 
     /**
@@ -323,6 +316,55 @@ public class AppController {
         String deployUrl = appService.deployApp(appId, loginUser);
         return ResultUtils.success(deployUrl);
     }
+
+    /**
+     * 下载项目
+     * @param appId appid
+     * @param request 请求
+     * @param response 响应
+     */
+    @GetMapping("/download/{appId}")
+    public void downloadProject(@PathVariable Long appId, HttpServletRequest request, HttpServletResponse response){
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
+        // 根据appid 查询
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null , ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 权限校验 只有应用创建者可以下载代码
+        User loginUser = userService.getLoginUser(request);
+        ThrowUtils.throwIf(!app.getUserId().equals(loginUser.getId()), ErrorCode.NO_AUTH_ERROR, "没有权限下载代码");
+        // 构建应用代码目录
+        String codeGenType = app.getCodeGenType();
+        String sourceDirName = codeGenType+"_" + appId;
+        String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
+        // 5. 检查源代码路径是否存在
+        File sourceDir = new File(sourceDirPath);
+        ThrowUtils.throwIf(!sourceDir.exists()||!sourceDir.isDirectory(), ErrorCode.NOT_FOUND_ERROR, "源代码不存在");
+        // 6. 生成还在啊文件名
+        String downloadFileName = String.valueOf(appId);
+        // 7. 下载文件
+        projectDownloadService.downloadProjectAsZip(sourceDirPath, downloadFileName, response);
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     /**

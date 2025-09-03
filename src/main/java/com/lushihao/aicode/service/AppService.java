@@ -1,5 +1,6 @@
 package com.lushihao.aicode.service;
 
+import com.lushihao.aicode.model.dto.app.AppAddRequest;
 import com.lushihao.aicode.model.dto.app.AppQueryRequest;
 import com.lushihao.aicode.model.entity.User;
 import com.lushihao.aicode.model.vo.AppVO;
@@ -33,6 +34,9 @@ public interface AppService extends IService<App> {
      * @return 流式返回代码
      */
     Flux<String> chatToGenCode(Long appId, String message, User loginUser);
+
+    Long addApp(AppAddRequest appAddRequest, User loginUser);
+
     /**
      * 应用部署
      * @param appId 应用ID

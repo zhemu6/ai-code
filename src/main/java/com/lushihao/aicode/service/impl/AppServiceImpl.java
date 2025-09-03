@@ -5,6 +5,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.lushihao.aicode.ai.AiCodeGenTypeRoutingService;
 import com.lushihao.aicode.constant.AppConstant;
 import com.lushihao.aicode.core.AiCodeGeneratorFacade;
 import com.lushihao.aicode.core.builder.VueProjectBuilder;
@@ -12,6 +13,7 @@ import com.lushihao.aicode.core.hanlder.StreamHandlerExecutor;
 import com.lushihao.aicode.exception.BusinessException;
 import com.lushihao.aicode.exception.ErrorCode;
 import com.lushihao.aicode.exception.ThrowUtils;
+import com.lushihao.aicode.model.dto.app.AppAddRequest;
 import com.lushihao.aicode.model.dto.app.AppQueryRequest;
 import com.lushihao.aicode.model.entity.User;
 import com.lushihao.aicode.model.enums.ChatHistoryMessageTypeEnum;
@@ -28,7 +30,6 @@ import com.lushihao.aicode.mapper.AppMapper;
 import com.lushihao.aicode.service.AppService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -62,7 +63,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private VueProjectBuilder vueProjectBuilder;
     @Resource
     private ScreenshotService screenshotService;
-
+    @Resource
+    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
 
     /**
      * 通过聊天生成代码
@@ -93,6 +95,27 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
         // 7. 收集ai响应的内容 并且在完成后保存记录到历史对话中
         return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+    }
+    @Override
+    public Long addApp(AppAddRequest appAddRequest, User loginUser){
+
+        // 参数校验
+        String initPrompt = appAddRequest.getInitPrompt();
+        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化 prompt 不能为空");
+        // 获取当前登录用户
+        // 构造入库对象
+        App app = new App();
+        BeanUtil.copyProperties(appAddRequest, app);
+        app.setUserId(loginUser.getId());
+        // 应用名称暂时为 initPrompt 前 12 位
+        app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
+        // 使用AI自动选择代码类型
+        CodeGenTypeEnum selectCodeGenType = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        app.setCodeGenType(selectCodeGenType.getValue());
+        // 插入数据库
+        boolean result = this.save(app);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        return app.getId();
     }
 
 
