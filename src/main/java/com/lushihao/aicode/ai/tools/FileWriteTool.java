@@ -1,10 +1,13 @@
 package com.lushihao.aicode.ai.tools;
 
+import cn.hutool.core.io.FileUtil;
+import cn.hutool.json.JSONObject;
 import com.lushihao.aicode.constant.AppConstant;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolMemoryId;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,7 +23,8 @@ import java.nio.file.StandardOpenOption;
  * create:   2025-09-03   12:01
  */
 @Slf4j
-public class FileWriteTool {
+@Component
+public class FileWriteTool extends BaseTool{
     /**
      * 文件写入
      * @param relativeFilePath 相对路径
@@ -56,5 +60,28 @@ public class FileWriteTool {
             return errorMessage;
         }
     }
+
+    @Override
+    public String getToolName() {
+        return "writeFile";
+    }
+
+    @Override
+    public String getDisplayName() {
+        return  "✍️文件写入📄";
+    }
+
+    @Override
+    public String generateToolExecutedResult(JSONObject arguments) {
+            String relativeFilePath = arguments.getStr("relativeFilePath");
+            String suffix = FileUtil.getSuffix(relativeFilePath);
+            String content = arguments.getStr("content");
+            return String.format("""
+                        [🔧工具调用] %s %s
+                        ```%s
+                        %s
+                        ```
+                        """, getDisplayName(), relativeFilePath, suffix, content);
+        }
 }
 

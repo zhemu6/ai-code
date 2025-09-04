@@ -3,7 +3,7 @@ package com.lushihao.aicode.ai;
 import cn.hutool.ai.core.AIService;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.lushihao.aicode.ai.tools.FileWriteTool;
+import com.lushihao.aicode.ai.tools.*;
 import com.lushihao.aicode.config.ReasoningStreamingChatModelConfig;
 import com.lushihao.aicode.config.RedisChatMemoryStoreConfig;
 import com.lushihao.aicode.exception.BusinessException;
@@ -47,6 +47,9 @@ public class AiCodeGeneratorServiceFactory {
     private RedisChatMemoryStore redisChatMemoryStore;
     @Resource
     private ChatHistoryService chatHistoryService;
+    @Resource
+    private ToolManager toolManager;
+
 
     /**
      * AI 服务实例缓存
@@ -102,7 +105,9 @@ public class AiCodeGeneratorServiceFactory {
             case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(new FileWriteTool())
+                    .tools(
+                            (Object[]) toolManager.getAllTools()
+                    )
                     // 当AI调用不存在的工具如何处理
                     .hallucinatedToolNameStrategy(
                             toolExecutionRequest -> ToolExecutionResultMessage.
