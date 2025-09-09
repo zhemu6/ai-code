@@ -1,12 +1,16 @@
 package com.lushihao.aicode.config;
 
+import com.lushihao.aicode.monitro.AiModelMonitorListener;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
+import jakarta.annotation.Resource;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
+
+import java.util.List;
 
 /**
  * 流式对话模型配置
@@ -32,7 +36,8 @@ public class StreamingChatModelConfig {
     private boolean logRequests;
 
     private boolean logResponses;
-
+    @Resource
+    private AiModelMonitorListener aiModelMonitorListener;
 
     /**
      * 非推理的流式模型(多例模式)
@@ -48,6 +53,7 @@ public class StreamingChatModelConfig {
                 .temperature(temperature)
                 .logRequests(logRequests)
                 .logResponses(logResponses)
+                .listeners(List.of(aiModelMonitorListener))
                 .build();
     }
 }

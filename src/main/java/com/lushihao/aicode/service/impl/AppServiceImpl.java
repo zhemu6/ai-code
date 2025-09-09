@@ -22,6 +22,8 @@ import com.lushihao.aicode.model.enums.ChatHistoryMessageTypeEnum;
 import com.lushihao.aicode.model.enums.CodeGenTypeEnum;
 import com.lushihao.aicode.model.vo.AppVO;
 import com.lushihao.aicode.model.vo.UserVO;
+import com.lushihao.aicode.monitro.MonitorContext;
+import com.lushihao.aicode.monitro.MonitorContextHolder;
 import com.lushihao.aicode.service.ChatHistoryService;
 import com.lushihao.aicode.service.ScreenshotService;
 import com.lushihao.aicode.service.UserService;
@@ -95,10 +97,17 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 5. 调用文件生成器
         // 调入ai之前 将用户的消息添加到数据库中
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
+        // 设置监控上下文 用户ID 和 应用ID
+        MonitorContextHolder.setContext(
+                MonitorContext.builder().userId(loginUser.getId().toString()).appId(appId.toString()).build());
         // 6. 获取ai返回的结果 这里返回的两种 一种是原生的文本流 一中是vue的json格式的
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
         // 7. 收集ai响应的内容 并且在完成后保存记录到历史对话中
-        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum)
+                .doFinally(signalType -> {
+                    // 流结束时清除监控上下文
+                    MonitorContextHolder.clearContext();
+                });
     }
     @Override
     public Long addApp(AppAddRequest appAddRequest, User loginUser){
