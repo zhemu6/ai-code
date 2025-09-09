@@ -1,6 +1,6 @@
-package com.lushihao.aicode.ai.tools;
+package com.lushihao.aicode.ai;
 
-import com.lushihao.aicode.ai.AiCodeGenTypeRoutingService;
+import com.lushihao.aicode.util.SpringContextUtil;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.AiServices;
 import jakarta.annotation.Resource;
@@ -17,16 +17,21 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class AiCodeGenTypeRoutingServiceFactory {
 
-    @Resource
-    private ChatModel chatModel;
-
     /**
      * 创建AI代码生成类型路由服务实例
      */
-    @Bean
-    public AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService() {
+
+    public AiCodeGenTypeRoutingService createAiCodeGenTypeRoutingService() {
+        ChatModel routingChatModel = SpringContextUtil.getBean("routingChatModelPrototype", ChatModel.class);
         return AiServices.builder(AiCodeGenTypeRoutingService.class)
-                .chatModel(chatModel)
+                .chatModel(routingChatModel)
                 .build();
     }
+
+    @Bean
+    public AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService() {
+        return createAiCodeGenTypeRoutingService();
+    }
+
+
 }

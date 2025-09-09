@@ -1,16 +1,15 @@
 package com.lushihao.aicode.ai;
 
-import cn.hutool.ai.core.AIService;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.lushihao.aicode.ai.guardrail.PromptSafetyInputGuardrail;
+import com.lushihao.aicode.ai.guardrail.RetryOutputGuardrail;
 import com.lushihao.aicode.ai.tools.*;
-import com.lushihao.aicode.config.ReasoningStreamingChatModelConfig;
-import com.lushihao.aicode.config.RedisChatMemoryStoreConfig;
 import com.lushihao.aicode.exception.BusinessException;
 import com.lushihao.aicode.exception.ErrorCode;
 import com.lushihao.aicode.model.enums.CodeGenTypeEnum;
 import com.lushihao.aicode.service.ChatHistoryService;
-import dev.langchain4j.agent.tool.P;
+import com.lushihao.aicode.util.SpringContextUtil;
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -19,8 +18,6 @@ import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.service.AiServices;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
@@ -36,13 +33,8 @@ import java.time.Duration;
 @Slf4j
 public class AiCodeGeneratorServiceFactory {
 
-    @Resource
+    @Resource(name = "openAiChatModel")
     private ChatModel chatModel;
-    @Resource
-    @Qualifier("openAiStreamingChatModel")
-    private StreamingChatModel openAistreamingChatModel;
-    @Resource
-    private StreamingChatModel reasoningStreamingChatModel;
     @Resource
     private RedisChatMemoryStore redisChatMemoryStore;
     @Resource
@@ -76,10 +68,12 @@ public class AiCodeGeneratorServiceFactory {
     public AiCodeGeneratorService getAiCodeGeneratorService(long appId) {
         return getAiCodeGeneratorService(appId, CodeGenTypeEnum.HTML);
     }
-    public AiCodeGeneratorService getAiCodeGeneratorService(long appId,CodeGenTypeEnum codeGenTypeEnum) {
+
+    public AiCodeGeneratorService getAiCodeGeneratorService(long appId, CodeGenTypeEnum codeGenTypeEnum) {
         String cacheKey = buildCacheKey(appId, codeGenTypeEnum);
-        return serviceCache.get(cacheKey,key ->createAiCodeGeneratorService(appId, codeGenTypeEnum));
+        return serviceCache.get(cacheKey, key -> createAiCodeGeneratorService(appId, codeGenTypeEnum));
     }
+
     /**
      * 创建新的 AI 服务实例
      */
@@ -97,22 +91,40 @@ public class AiCodeGeneratorServiceFactory {
         chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 20);
         // 根据不同的代码生成类型采用不同的模型配置 如果是HTML或者是MULTI_FILE较为简单的直接采用默认模型 如果是VUE_PROJECT则需要采用推理模型
         return switch (codeGenTypeEnum) {
-            case HTML, MULTI_FILE -> AiServices.builder(AiCodeGeneratorService.class)
-                    .chatModel(chatModel)
-                    .streamingChatModel(openAistreamingChatModel)
-                    .chatMemory(chatMemory)
-                    .build();
-            case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
-                    .streamingChatModel(reasoningStreamingChatModel)
-                    .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(
-                            (Object[]) toolManager.getAllTools()
-                    )
-                    // 当AI调用不存在的工具如何处理
-                    .hallucinatedToolNameStrategy(
-                            toolExecutionRequest -> ToolExecutionResultMessage.
-                                    from(toolExecutionRequest, ":Error:there is not tool called" + toolExecutionRequest.name()))
-                    .build();
+            case HTML, MULTI_FILE -> {
+                StreamingChatModel openAistreamingChatModel = SpringContextUtil.getBean("streamingChatModelPrototype", StreamingChatModel.class);
+                yield AiServices.builder(AiCodeGeneratorService.class)
+                        .chatModel(chatModel)
+                        .streamingChatModel(openAistreamingChatModel)
+                        .chatMemory(chatMemory)
+                        // 添加输入护轨
+                        .inputGuardrails(new PromptSafetyInputGuardrail())
+                        // 添加输出护轨（为了保持流式输出 去除）
+//                        .outputGuardrails(new RetryOutputGuardrail())
+                        .build();
+            }
+            case VUE_PROJECT -> {
+                // 1.获取模型的Bean实例
+                StreamingChatModel reasoningStreamingChatModel = SpringContextUtil.getBean("reasoningStreamingChatModelPrototype", StreamingChatModel.class);
+                yield AiServices.builder(AiCodeGeneratorService.class)
+                        .streamingChatModel(reasoningStreamingChatModel)
+                        .chatMemoryProvider(memoryId -> chatMemory)
+                        .tools(
+                                (Object[]) toolManager.getAllTools()
+                        )
+                        // 当AI调用不存在的工具如何处理
+                        .hallucinatedToolNameStrategy(
+                                toolExecutionRequest -> ToolExecutionResultMessage.
+                                        from(toolExecutionRequest, ":Error:there is not tool called" + toolExecutionRequest.name()))
+                        // 最多连续调用20次工具
+                        .maxSequentialToolsInvocations(20)
+                        // 添加输入护轨
+                        .inputGuardrails(new PromptSafetyInputGuardrail())
+                        // 添加输出护轨
+//                        .outputGuardrails(new RetryOutputGuardrail())
+                        .build();
+
+            }
             default ->
                     throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型" + codeGenTypeEnum.getValue());
         };
@@ -120,6 +132,7 @@ public class AiCodeGeneratorServiceFactory {
 
     /**
      * 构建缓存key
+     *
      * @param appId
      * @param codeGenTypeEnum
      * @return

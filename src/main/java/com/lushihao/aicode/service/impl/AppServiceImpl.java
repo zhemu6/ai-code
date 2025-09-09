@@ -6,6 +6,8 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.lushihao.aicode.ai.AiCodeGenTypeRoutingService;
+import com.lushihao.aicode.ai.AiCodeGenTypeRoutingServiceFactory;
+import com.lushihao.aicode.ai.AiCodeGeneratorServiceFactory;
 import com.lushihao.aicode.constant.AppConstant;
 import com.lushihao.aicode.core.AiCodeGeneratorFacade;
 import com.lushihao.aicode.core.builder.VueProjectBuilder;
@@ -63,8 +65,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private VueProjectBuilder vueProjectBuilder;
     @Resource
     private ScreenshotService screenshotService;
+//    @Resource
+//    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
     @Resource
-    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+    private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
 
     /**
      * 通过聊天生成代码
@@ -109,7 +113,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         app.setUserId(loginUser.getId());
         // 应用名称暂时为 initPrompt 前 12 位
         app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
-        // 使用AI自动选择代码类型
+        // 使用AI自动选择代码类型 多例模式
+        AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService = aiCodeGenTypeRoutingServiceFactory.createAiCodeGenTypeRoutingService();
         CodeGenTypeEnum selectCodeGenType = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
         app.setCodeGenType(selectCodeGenType.getValue());
         // 插入数据库

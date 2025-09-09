@@ -1,11 +1,9 @@
 package com.lushihao.aicode.controller;
 
 import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.lushihao.aicode.ai.AiCodeGenTypeRoutingService;
-import com.lushihao.aicode.ai.tools.AiCodeGenTypeRoutingServiceFactory;
 import com.lushihao.aicode.annotation.AuthCheck;
 import com.lushihao.aicode.common.BaseResponse;
 import com.lushihao.aicode.common.DeleteRequest;
@@ -17,8 +15,9 @@ import com.lushihao.aicode.exception.ErrorCode;
 import com.lushihao.aicode.exception.ThrowUtils;
 import com.lushihao.aicode.model.dto.app.*;
 import com.lushihao.aicode.model.entity.User;
-import com.lushihao.aicode.model.enums.CodeGenTypeEnum;
 import com.lushihao.aicode.model.vo.AppVO;
+import com.lushihao.aicode.ratelimiter.annotation.RateLimit;
+import com.lushihao.aicode.ratelimiter.enums.RateLimitType;
 import com.lushihao.aicode.service.ProjectDownloadService;
 import com.lushihao.aicode.service.UserService;
 import com.mybatisflex.core.paginate.Page;
@@ -26,10 +25,11 @@ import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.beans.factory.annotation.Autowired;
 import com.lushihao.aicode.model.entity.App;
 import com.lushihao.aicode.service.AppService;
 import reactor.core.publisher.Flux;
@@ -55,8 +55,7 @@ public class AppController {
     private UserService userService;
     @Resource
     private ProjectDownloadService projectDownloadService;
-    @Resource
-    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+
     /**
      * 创建应用
      *
@@ -176,6 +175,9 @@ public class AppController {
      * @param appQueryRequest 查询请求
      * @return 精选应用列表
      */
+    @Cacheable(value = "good_app_page",key ="T(com.lushihao.aicode.util.CacheKeyUtils).generateCacheKey(#appQueryRequest)",
+    condition = "#appQueryRequest.pageNum<=10"
+    )
     @PostMapping("/good/list/page/vo")
     public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest) {
         ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
@@ -280,6 +282,7 @@ public class AppController {
 
 
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RateLimit(limitType = RateLimitType.USER,rate =5,rateInterval = 60,message = "您的操作过于频繁，请稍后再试")
     public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId, @RequestParam String message, HttpServletRequest request) {
         // 参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
