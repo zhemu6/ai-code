@@ -25,6 +25,7 @@ import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.http.MediaType;
@@ -45,6 +46,7 @@ import java.util.Map;
  *
  * @author <a href="https://github.com/zhemu6">ShihaoLu</a>
  */
+@Slf4j
 @RestController
 @RequestMapping("/app")
 public class AppController {
@@ -67,7 +69,7 @@ public class AppController {
     public BaseResponse<Long> addApp(@RequestBody AppAddRequest appAddRequest, HttpServletRequest request) {
         ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
         User loginUser = userService.getLoginUser(request);
-        return ResultUtils.success( appService.addApp(appAddRequest, loginUser));
+        return ResultUtils.success(appService.addApp(appAddRequest, loginUser));
     }
 
     /**
@@ -175,11 +177,12 @@ public class AppController {
      * @param appQueryRequest 查询请求
      * @return 精选应用列表
      */
-    @Cacheable(value = "good_app_page",key ="T(com.lushihao.aicode.util.CacheKeyUtils).generateCacheKey(#appQueryRequest)",
-    condition = "#appQueryRequest.pageNum<=10"
+    @Cacheable(value = "good_app_page", key = "T(com.lushihao.aicode.util.CacheKeyUtils).generateCacheKey(#appQueryRequest)",
+            condition = "#appQueryRequest.pageNum<=10"
     )
     @PostMapping("/good/list/page/vo")
     public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest) {
+        log.info("分页获取精选应用列表 + appQueryRequest:{}", appQueryRequest);
         ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
         // 限制每页最多 20 个
         long pageSize = appQueryRequest.getPageSize();
@@ -282,23 +285,29 @@ public class AppController {
 
 
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    @RateLimit(limitType = RateLimitType.USER,rate =5,rateInterval = 60,message = "您的操作过于频繁，请稍后再试")
-    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId, @RequestParam String message, HttpServletRequest request) {
+    @RateLimit(limitType = RateLimitType.USER, rate = 5, rateInterval = 60, message = "您的操作过于频繁，请稍后再试")
+    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,
+                                                       @RequestParam String message,
+                                                       HttpServletRequest request) {
         // 参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "应用提示词不能为空");
         User loginUser = userService.getLoginUser(request);
         // 调用服务 流式返回
         Flux<String> resultFlux = appService.chatToGenCode(appId, message, loginUser);
-        return resultFlux.map(chunk -> {
-                    // 使用JSON格式封装数据 保证空格不会被删除
-                    Map<String, String> wrapper = Map.of("d", chunk);
-                    String jsonStr = JSONUtil.toJsonStr(wrapper);
-                    return ServerSentEvent.<String>builder().data(jsonStr).build();
-                })
+        return resultFlux.map(
+                        chunk -> {
+                            // 使用JSON格式封装数据 保证空格不会被删除
+                            Map<String, String> wrapper = Map.of("d", chunk);
+                            String jsonStr = JSONUtil.toJsonStr(wrapper);
+                            return ServerSentEvent.<String>builder().data(jsonStr).build();
+                        })
                 .concatWith(Mono.just(
                         // 正常传输完成后 发送结束事件
-                        ServerSentEvent.<String>builder().event("done").data("").build()));
+                        ServerSentEvent.<String>builder()
+                                .event("done")
+                                .data("")
+                                .build()));
     }
 
     /**
@@ -322,52 +331,32 @@ public class AppController {
 
     /**
      * 下载项目
-     * @param appId appid
-     * @param request 请求
+     *
+     * @param appId    appid
+     * @param request  请求
      * @param response 响应
      */
     @GetMapping("/download/{appId}")
-    public void downloadProject(@PathVariable Long appId, HttpServletRequest request, HttpServletResponse response){
+    public void downloadProject(@PathVariable Long appId, HttpServletRequest request, HttpServletResponse response) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
         // 根据appid 查询
         App app = appService.getById(appId);
-        ThrowUtils.throwIf(app == null , ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
         // 权限校验 只有应用创建者可以下载代码
         User loginUser = userService.getLoginUser(request);
         ThrowUtils.throwIf(!app.getUserId().equals(loginUser.getId()), ErrorCode.NO_AUTH_ERROR, "没有权限下载代码");
         // 构建应用代码目录
         String codeGenType = app.getCodeGenType();
-        String sourceDirName = codeGenType+"_" + appId;
+        String sourceDirName = codeGenType + "_" + appId;
         String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
         // 5. 检查源代码路径是否存在
         File sourceDir = new File(sourceDirPath);
-        ThrowUtils.throwIf(!sourceDir.exists()||!sourceDir.isDirectory(), ErrorCode.NOT_FOUND_ERROR, "源代码不存在");
+        ThrowUtils.throwIf(!sourceDir.exists() || !sourceDir.isDirectory(), ErrorCode.NOT_FOUND_ERROR, "源代码不存在");
         // 6. 生成还在啊文件名
         String downloadFileName = String.valueOf(appId);
         // 7. 下载文件
         projectDownloadService.downloadProjectAsZip(sourceDirPath, downloadFileName, response);
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     /**

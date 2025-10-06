@@ -24,14 +24,11 @@ import com.lushihao.aicode.model.vo.AppVO;
 import com.lushihao.aicode.model.vo.UserVO;
 import com.lushihao.aicode.monitro.MonitorContext;
 import com.lushihao.aicode.monitro.MonitorContextHolder;
-import com.lushihao.aicode.service.ChatHistoryService;
-import com.lushihao.aicode.service.ScreenshotService;
-import com.lushihao.aicode.service.UserService;
+import com.lushihao.aicode.service.*;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.lushihao.aicode.model.entity.App;
 import com.lushihao.aicode.mapper.AppMapper;
-import com.lushihao.aicode.service.AppService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -67,6 +64,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private VueProjectBuilder vueProjectBuilder;
     @Resource
     private ScreenshotService screenshotService;
+    @Resource
+    private ChatHistoryOriginalService chatHistoryOriginalService;
 //    @Resource
 //    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
     @Resource
@@ -90,28 +89,35 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
         // 3. 权限校验 仅本人可以和自己的应用对话
         ThrowUtils.throwIf(!app.getUserId().equals(loginUser.getId()), ErrorCode.NO_AUTH_ERROR, "无权限操作");
-        // 4. 获取代码生成类型 html/multi_file
+        // 4. 获取代码生成类型 html/multi_file/vue
         String codeGenTypeStr = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenTypeStr);
         ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.PARAMS_ERROR, "代码生成类型错误");
         // 5. 调用文件生成器
         // 调入ai之前 将用户的消息添加到数据库中
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
+        chatHistoryOriginalService.addOriginalChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
         // 设置监控上下文 用户ID 和 应用ID
         MonitorContextHolder.setContext(
                 MonitorContext.builder().userId(loginUser.getId().toString()).appId(appId.toString()).build());
         // 6. 获取ai返回的结果 这里返回的两种 一种是原生的文本流 一中是vue的json格式的
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
         // 7. 收集ai响应的内容 并且在完成后保存记录到历史对话中
-        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum)
+        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService,chatHistoryOriginalService, appId, loginUser, codeGenTypeEnum)
                 .doFinally(signalType -> {
                     // 流结束时清除监控上下文
                     MonitorContextHolder.clearContext();
                 });
     }
+
+    /**
+     * 创建应用，并没有正式生成代码 其中appAddRequest中仅有初始化的Prompt
+     * @param appAddRequest
+     * @param loginUser
+     * @return
+     */
     @Override
     public Long addApp(AppAddRequest appAddRequest, User loginUser){
-
         // 参数校验
         String initPrompt = appAddRequest.getInitPrompt();
         ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化 prompt 不能为空");
@@ -261,9 +267,13 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Set<Long> userIds = appList.stream()
                 .map(App::getUserId)
                 .collect(Collectors.toSet());
-        Map<Long, UserVO> userVOMap = userService.listByIds(userIds).stream()
+        // 根据用户ID查询UserVo对象 并且组成一个Map key是userId value是UserVo对象
+        Map<Long, UserVO> userVOMap = userService.listByIds(userIds)
+                .stream()
                 .collect(Collectors.toMap(User::getId, userService::getUserVO));
-        return appList.stream().map(app -> {
+        return appList.stream()
+                .map(app -> {
+                    // 对于Stream中的对象 首先获得vo类 从userVOMap查询相应的userVO对象 并设置在User中
             AppVO appVO = getAppVO(app);
             UserVO userVO = userVOMap.get(app.getUserId());
             appVO.setUser(userVO);
@@ -323,6 +333,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         try{
             // 删除对话历史
             chatHistoryService.deleteByAppId(appId);
+            chatHistoryOriginalService.deleteByAppId(appId);
+
         }catch (Exception e){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "删除应用失败：" + e.getMessage());
         }

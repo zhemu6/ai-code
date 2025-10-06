@@ -8,6 +8,7 @@ import com.lushihao.aicode.ai.tools.*;
 import com.lushihao.aicode.exception.BusinessException;
 import com.lushihao.aicode.exception.ErrorCode;
 import com.lushihao.aicode.model.enums.CodeGenTypeEnum;
+import com.lushihao.aicode.service.ChatHistoryOriginalService;
 import com.lushihao.aicode.service.ChatHistoryService;
 import com.lushihao.aicode.util.SpringContextUtil;
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
@@ -41,7 +42,8 @@ public class AiCodeGeneratorServiceFactory {
     private ChatHistoryService chatHistoryService;
     @Resource
     private ToolManager toolManager;
-
+    @Resource
+    private ChatHistoryOriginalService chatHistoryOriginalService;
 
     /**
      * AI 服务实例缓存
@@ -69,8 +71,17 @@ public class AiCodeGeneratorServiceFactory {
         return getAiCodeGeneratorService(appId, CodeGenTypeEnum.HTML);
     }
 
+
+    /**
+     * 根据appId 和代码生成类型创建AI代码生成器服务
+     * @param appId
+     * @param codeGenTypeEnum
+     * @return
+     */
     public AiCodeGeneratorService getAiCodeGeneratorService(long appId, CodeGenTypeEnum codeGenTypeEnum) {
+        // 1.构建缓存的key 确保不同的参数对应不同的缓存值
         String cacheKey = buildCacheKey(appId, codeGenTypeEnum);
+        // 2.从缓存中获取AI服务实例 如果缓存中没有就调用createAiCodeGeneratorService创建一个新的实例
         return serviceCache.get(cacheKey, key -> createAiCodeGeneratorService(appId, codeGenTypeEnum));
     }
 
@@ -84,17 +95,17 @@ public class AiCodeGeneratorServiceFactory {
                 .builder()
                 .id(appId)
                 .chatMemoryStore(redisChatMemoryStore)
-                .maxMessages(20)
+                .maxMessages(50)
                 .build();
 
-        // 从数据库加载历史对话到记忆中
-        chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 20);
+
         // 根据不同的代码生成类型采用不同的模型配置 如果是HTML或者是MULTI_FILE较为简单的直接采用默认模型 如果是VUE_PROJECT则需要采用推理模型
         return switch (codeGenTypeEnum) {
             case HTML, MULTI_FILE -> {
+                // 从数据库加载历史对话到记忆中
+                chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 20);
                 StreamingChatModel openAistreamingChatModel = SpringContextUtil.getBean("streamingChatModelPrototype", StreamingChatModel.class);
                 yield AiServices.builder(AiCodeGeneratorService.class)
-                        .chatModel(chatModel)
                         .streamingChatModel(openAistreamingChatModel)
                         .chatMemory(chatMemory)
                         // 添加输入护轨
@@ -104,8 +115,10 @@ public class AiCodeGeneratorServiceFactory {
                         .build();
             }
             case VUE_PROJECT -> {
+                chatHistoryOriginalService.loadOriginalChatHistoryToMemory(appId, chatMemory, 50);
                 // 1.获取模型的Bean实例
                 StreamingChatModel reasoningStreamingChatModel = SpringContextUtil.getBean("reasoningStreamingChatModelPrototype", StreamingChatModel.class);
+
                 yield AiServices.builder(AiCodeGeneratorService.class)
                         .streamingChatModel(reasoningStreamingChatModel)
                         .chatMemoryProvider(memoryId -> chatMemory)

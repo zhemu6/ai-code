@@ -31,7 +31,6 @@ import java.time.Duration;
  */
 @Slf4j
 public class WebScreenshotUtils {
-    // todo 这里是全局共享一个webDriver 需要考虑并发问题 当多个线程共用的时候 可能出现a用户截图是b的
     /**
      * 使用ThreadLocal确保每个线程拥有独立的WebDriver
      */

@@ -3,6 +3,7 @@ package com.lushihao.aicode.core.hanlder;
 
 import com.lushihao.aicode.model.entity.User;
 import com.lushihao.aicode.model.enums.CodeGenTypeEnum;
+import com.lushihao.aicode.service.ChatHistoryOriginalService;
 import com.lushihao.aicode.service.ChatHistoryService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -35,11 +36,12 @@ public class StreamHandlerExecutor {
      */
     public Flux<String> doExecute(Flux<String> originFlux,
                                   ChatHistoryService chatHistoryService,
+                                  ChatHistoryOriginalService chatHistoryOriginalService,
                                   long appId, User loginUser, CodeGenTypeEnum codeGenType) {
         return switch (codeGenType) {
             // 使用注入的组件实例
             case VUE_PROJECT ->
-                    jsonMessageStreamHandler.handle(originFlux, chatHistoryService, appId, loginUser);
+                    jsonMessageStreamHandler.handle(originFlux, chatHistoryService,chatHistoryOriginalService, appId, loginUser);
             // 简单文本处理器不需要依赖注入
             case HTML, MULTI_FILE ->
                     new SimpleTextStreamHandler().handle(originFlux, chatHistoryService, appId, loginUser);

@@ -2,6 +2,11 @@ package com.lushihao.aicode.exception;
 
 import lombok.Getter;
 
+/**
+ * 错误码枚举类
+ * @author lushihao
+ */
+
 @Getter
 public enum ErrorCode {
 

@@ -48,23 +48,23 @@ public class AiCodeGeneratorFacade {
      *
      * @param userMessage 用户提示词
      * @param codeGenType 生成类型
-     * @param appId 应用ID
+     * @param appId       应用ID
      * @return 保存的目录
      */
-    public File generateAndSaveCode(String userMessage, CodeGenTypeEnum codeGenType,Long appId) {
+    public File generateAndSaveCode(String userMessage, CodeGenTypeEnum codeGenType, Long appId) {
         ThrowUtils.throwIf(codeGenType == null, ErrorCode.SYSTEM_ERROR, "生成类型不能为空");
         // 根据appid 获取相应的Ai服务实例
-        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId,codeGenType);
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId, codeGenType);
         return switch (codeGenType) {
             case HTML -> {
                 // 获取HtmlCodeResult
                 HtmlCodeResult result = aiCodeGeneratorService.generateHtmlCode(userMessage);
                 // 保存代码到文件中
-                yield CodeFileSaverExecutor.executeSaver(result, CodeGenTypeEnum.HTML,appId);
+                yield CodeFileSaverExecutor.executeSaver(result, CodeGenTypeEnum.HTML, appId);
             }
-            case MULTI_FILE ->{
+            case MULTI_FILE -> {
                 MultiFileCodeResult result = aiCodeGeneratorService.generateMultiFileCode(userMessage);
-                yield CodeFileSaverExecutor.executeSaver(result, CodeGenTypeEnum.MULTI_FILE,appId);
+                yield CodeFileSaverExecutor.executeSaver(result, CodeGenTypeEnum.MULTI_FILE, appId);
             }
             default -> {
                 String errorMessage = "不支持的生成类型：" + codeGenType.getValue();
@@ -75,30 +75,30 @@ public class AiCodeGeneratorFacade {
     }
 
     /**
-     *  流式  统一入口：根据类型输出生成并保存代码
+     * 流式  统一入口：根据类型输出生成并保存代码
      *
      * @param userMessage 用户提示词
      * @param codeGenType 生成类型
-     * @param appId 应用ID
+     * @param appId       应用ID
      * @return 保存的目录
      */
-    public Flux<String> generateAndSaveCodeStream(String userMessage, CodeGenTypeEnum codeGenType,Long appId) {
+    public Flux<String> generateAndSaveCodeStream(String userMessage, CodeGenTypeEnum codeGenType, Long appId) {
         ThrowUtils.throwIf(codeGenType == null, ErrorCode.SYSTEM_ERROR, "生成类型不能为空");
         // 根据appid 获取相应的Ai服务实例
-        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId,codeGenType);
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId, codeGenType);
         return switch (codeGenType) {
             case HTML -> {
                 Flux<String> resultStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
-                yield processCodeStream(resultStream, CodeGenTypeEnum.HTML,appId);
+                yield processCodeStream(resultStream, CodeGenTypeEnum.HTML, appId);
             }
             case MULTI_FILE -> {
                 Flux<String> resultStream = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
-                yield processCodeStream(resultStream, CodeGenTypeEnum.MULTI_FILE,appId);
+                yield processCodeStream(resultStream, CodeGenTypeEnum.MULTI_FILE, appId);
             }
             case VUE_PROJECT -> {
-                TokenStream tokenStream = aiCodeGeneratorService.generateVueProjectCodeStream(appId,userMessage);
+                TokenStream tokenStream = aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
                 // 将TokenStream 转换成Flux
-                yield processTokenStream(tokenStream,appId);
+                yield processTokenStream(tokenStream, appId);
             }
             default -> {
                 String errorMessage = "不支持的生成类型：" + codeGenType.getValue();
@@ -111,62 +111,69 @@ public class AiCodeGeneratorFacade {
      * 将 TokenStream 转换为 Flux<String>，并传递工具调用信息
      *
      * @param tokenStream TokenStream 对象
-     * @param appId 应用ID
+     * @param appId       应用ID
      * @return Flux<String> 流式响应
      */
-    private Flux<String> processTokenStream(TokenStream tokenStream,Long appId) {
-        return Flux.create(sink -> {
-            tokenStream.onPartialResponse((String partialResponse) -> {
-                        AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
-                        sink.next(JSONUtil.toJsonStr(aiResponseMessage));
-                    })
-                    .onPartialToolExecutionRequest((index, toolExecutionRequest) -> {
-                        ToolRequestMessage toolRequestMessage = new ToolRequestMessage(toolExecutionRequest);
-                        sink.next(JSONUtil.toJsonStr(toolRequestMessage));
-                    })
-                    .onToolExecuted((ToolExecution toolExecution) -> {
-                        ToolExecutedMessage toolExecutedMessage = new ToolExecutedMessage(toolExecution);
-                        sink.next(JSONUtil.toJsonStr(toolExecutedMessage));
-                    })
-                    .onCompleteResponse((ChatResponse response) -> {
-                        String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId;
-                        vueProjectBuilder.buildProject(projectPath);
-                        sink.complete();
-                    })
-                    .onError((Throwable error) -> {
-                        error.printStackTrace();
-                        sink.error(error);
-                    })
-                    .start();
-        });
+    private Flux<String> processTokenStream(TokenStream tokenStream, Long appId) {
+        return Flux.create(
+                // sink是一个发布数据的对象
+                sink -> {
+                    // 处理部分相应
+                    tokenStream.onPartialResponse((String partialResponse) -> {
+                                AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
+                                sink.next(JSONUtil.toJsonStr(aiResponseMessage));
+                            })
+                            // 处理部分工具调用请求
+                            .onPartialToolExecutionRequest((index, toolExecutionRequest) -> {
+                                ToolRequestMessage toolRequestMessage = new ToolRequestMessage(toolExecutionRequest);
+                                sink.next(JSONUtil.toJsonStr(toolRequestMessage));
+                            })
+                            // 处理工具执行结果
+                            .onToolExecuted((ToolExecution toolExecution) -> {
+                                ToolExecutedMessage toolExecutedMessage = new ToolExecutedMessage(toolExecution);
+                                sink.next(JSONUtil.toJsonStr(toolExecutedMessage));
+                            })
+                            .onCompleteResponse((ChatResponse response) -> {
+                                String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId;
+                                vueProjectBuilder.buildProject(projectPath);
+                                sink.complete();
+                            })
+                            .onError((Throwable error) -> {
+                                error.printStackTrace();
+                                sink.error(error);
+                            })
+                            .start();
+                });
     }
-
 
 
     /**
      * 成多文件格式的流式代码
+     *
      * @param codeStream
      * @param codeGenType
      * @param appId
      * @return
      */
-    private Flux<String> processCodeStream(Flux<String> codeStream ,CodeGenTypeEnum codeGenType,Long appId) {
+    private Flux<String> processCodeStream(Flux<String> codeStream, CodeGenTypeEnum codeGenType, Long appId) {
         // 字符串拼接器 用于当流式返回所有代码拼接所有代码
         StringBuilder codeBuilder = new StringBuilder();
         return codeStream.doOnNext(
+                // 实时收集代码片段
                 chunk -> {
                     codeBuilder.append(chunk);
                 }
         ).doOnComplete(() -> {
+                    // 当流式返回所有代码片段后，拼接所有代码片段，并保存文件
                     try {
                         String completeFileCode = codeBuilder.toString();
-                        // 利用执行器解析代码
+                        // 利用代码解析执行器解析代码
                         Object parsedResult = CodeParserExecutor.executeParser(completeFileCode, codeGenType);
                         // 保存文件并返回
-                        File file = CodeFileSaverExecutor.executeSaver(parsedResult, codeGenType,appId);
-                        log.info("流式生成多文件代码完成，文件保存路径：{}", file.getAbsolutePath());
+                        File file = CodeFileSaverExecutor.executeSaver(parsedResult, codeGenType, appId);
+                        log.info("流式生成代码完成，文件保存路径：{}", file.getAbsolutePath());
                     } catch (Exception e) {
-                        log.error("流式生成多文件代码异常", e);
+                        log.error("流式生成代码异常", e);
                     }
                 }
         );

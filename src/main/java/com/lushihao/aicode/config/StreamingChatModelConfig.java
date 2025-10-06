@@ -41,6 +41,7 @@ public class StreamingChatModelConfig {
 
     /**
      * 非推理的流式模型(多例模式)
+     * @Scope("prototype") 注解是告诉Spring容器每次获取bean都会创建一个新的实例
      */
     @Bean
     @Scope("prototype")

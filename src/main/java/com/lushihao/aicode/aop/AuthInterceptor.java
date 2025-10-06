@@ -32,14 +32,15 @@ public class AuthInterceptor {
     private UserService userService;
 
     /**
-     * 执行拦截
+     * 执行拦截 环绕通知
      *
-     * @param joinPoint 切入点
+     * @param joinPoint 切入点 后续我们可以通过proceed()执行原方法
      * @param authCheck 权限校验注解
      */
     @Around("@annotation(authCheck)")
     public Object doInterceptor(ProceedingJoinPoint joinPoint, AuthCheck authCheck) throws Throwable {
         String mustRole = authCheck.mustRole();
+        // 从Spring RequestContextHolder获取HttpServletRequest
         RequestAttributes requestAttributes = RequestContextHolder.currentRequestAttributes();
         HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
         // 当前登录用户

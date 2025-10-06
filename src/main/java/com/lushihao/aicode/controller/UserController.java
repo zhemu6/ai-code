@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.lushihao.aicode.model.entity.User;
 import com.lushihao.aicode.service.UserService;
 import org.springframework.web.bind.annotation.RestController;
+
 import java.util.List;
 
 /**
@@ -58,19 +59,21 @@ public class UserController {
 
     /**
      * 用户登录
+     *
      * @param userLoginRequest 用户登陆封装类
      * @return 后端给前端返回的封装类型
      */
     @PostMapping("/login")
-    public BaseResponse<LoginUserVO> userLogin(@RequestBody UserLoginRequest userLoginRequest , HttpServletRequest request){
+    public BaseResponse<LoginUserVO> userLogin(@RequestBody UserLoginRequest userLoginRequest, HttpServletRequest request) {
         ThrowUtils.throwIf(userLoginRequest == null, ErrorCode.PARAMS_ERROR);
         log.info("用户登录功能，请求参数为：{}", userLoginRequest);
-        LoginUserVO loginUserVO = userService.userLogin(userLoginRequest,request);
+        LoginUserVO loginUserVO = userService.userLogin(userLoginRequest, request);
         return ResultUtils.success(loginUserVO);
     }
 
     /**
      * 获取当前登录用户
+     *
      * @param request
      * @return 脱敏后的用户
      */
@@ -84,6 +87,7 @@ public class UserController {
 
     /**
      * 用戶注销
+     *
      * @param request
      * @return 是否注销成功
      */
@@ -98,6 +102,7 @@ public class UserController {
 
     /**
      * 添加用户
+     *
      * @param userAddRequest 用户添加请求
      * @return
      */
@@ -114,18 +119,19 @@ public class UserController {
         String encryptPassword = userService.getEncryptPassword(DEFAULT_PASSWORD);
         user.setUserPassword(encryptPassword);
         boolean result = userService.save(user);
-        ThrowUtils.throwIf(!result , ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(!result, ErrorCode.PARAMS_ERROR);
         return ResultUtils.success(user.getId());
     }
 
     /**
      * 根据id获取用户（管理员）
+     *
      * @param id 用户id
      * @return User 未脱敏
      */
     @GetMapping("/get")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<User> getUserById(long id){
+    public BaseResponse<User> getUserById(long id) {
         ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
         User user = userService.getById(id);
         ThrowUtils.throwIf(user == null, ErrorCode.NOT_FOUND_ERROR);
@@ -135,11 +141,12 @@ public class UserController {
 
     /**
      * 根据id获取包装类用户
+     *
      * @param id 用户id
      * @return UserVO 包装类
      */
     @GetMapping("/get/vo")
-    public BaseResponse<UserVO> getUserVOById(long id){
+    public BaseResponse<UserVO> getUserVOById(long id) {
         BaseResponse<User> response = getUserById(id);
         User user = response.getData();
         return ResultUtils.success(userService.getUserVO(user));
@@ -147,26 +154,28 @@ public class UserController {
 
     /**
      * 删除用户 （管理员）
+     *
      * @param deleteRequest 删除请求
-     * @return
+     * @return 是否删除成功
      */
     @PostMapping("/delete")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> deleteUser(@RequestBody DeleteRequest deleteRequest) {
-        ThrowUtils.throwIf(deleteRequest == null||deleteRequest.getId()<=0, ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(deleteRequest == null || deleteRequest.getId() <= 0, ErrorCode.PARAMS_ERROR);
         boolean result = userService.removeById(deleteRequest.getId());
         return ResultUtils.success(result);
     }
 
     /**
      * 更新用户 （管理员）
+     *
      * @param userUpdateRequest 用户更新请求
      * @return
      */
     @PostMapping("/update")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> updateUser(@RequestBody UserUpdateRequest userUpdateRequest) {
-        ThrowUtils.throwIf(userUpdateRequest == null||userUpdateRequest.getId()<=0, ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(userUpdateRequest == null || userUpdateRequest.getId() <= 0, ErrorCode.PARAMS_ERROR);
         User user = new User();
         BeanUtil.copyProperties(userUpdateRequest, user);
         boolean result = userService.updateById(user);
@@ -188,8 +197,6 @@ public class UserController {
         userVOPage.setRecords(userVOList);
         return ResultUtils.success(userVOPage);
     }
-
-
 
 
 //

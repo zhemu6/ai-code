@@ -11,6 +11,10 @@ import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * 指标收集器
+ * @author lushihao
+ */
 @Component
 @Slf4j
 public class AiModelMetricsCollector {

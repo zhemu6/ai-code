@@ -8,6 +8,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
+ * 限流注解
  * @author: lushihao
  * @version: 1.0
  * create:   2025-09-05   19:11
@@ -15,6 +16,7 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RateLimit {
+
     /**
      * 限流key前缀
      */

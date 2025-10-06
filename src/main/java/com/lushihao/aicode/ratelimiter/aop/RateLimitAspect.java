@@ -49,7 +49,6 @@ public class RateLimitAspect {
         rateLimiter.trySetRate(RateType.OVERALL,rateLimit.rate(),rateLimit.rateInterval(), RateIntervalUnit.SECONDS);
         // 尝试获取一个令牌，如果获取不到则抛出异常
         ThrowUtils.throwIf(!rateLimiter.tryAcquire(1), ErrorCode.TOO_MANY_REQUEST, rateLimit.message());
-
     }
 
     /**

@@ -1,7 +1,7 @@
 package com.lushihao.aicode.core.parser;
 
 /**
- * 代码解析器策略接口
+ * 代码解析器策略接口 模板方法
  * @author: lushihao
  * @version: 1.0
  * create:   2025-09-02   12:08

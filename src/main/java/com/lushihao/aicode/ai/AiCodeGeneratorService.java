@@ -16,7 +16,7 @@ import reactor.core.publisher.Flux;
  * create:   2025-09-01   22:36
  */
 public interface AiCodeGeneratorService {
-
+    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 非流式调用 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     /**
      * 生成 HTML 代码
      *
@@ -35,6 +35,7 @@ public interface AiCodeGeneratorService {
     @SystemMessage(fromResource = "prompt/codegen-multi-file-system-prompt.txt")
     MultiFileCodeResult generateMultiFileCode(String userMessage);
 
+    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 流式调用 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     /**
      * 流式调用生成 HTML 代码

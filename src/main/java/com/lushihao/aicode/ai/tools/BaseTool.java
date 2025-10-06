@@ -1,17 +1,14 @@
 package com.lushihao.aicode.ai.tools;
 
+
+
+import cn.hutool.json.JSONObject;
+
 /**
  * 工具基类 定义所有的工具的通用接口
  * @author: lushihao
  * @version: 1.0
  * create:   2025-09-04   9:02
- */
-
-import cn.hutool.json.JSONObject;
-
-/**
- * 工具基类
- * 定义所有工具的通用接口
  */
 public abstract class BaseTool {
 
